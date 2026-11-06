@@ -12,6 +12,12 @@ Paste your GitHub repo and get a brutally honest hackathon-readiness check, a sh
 
 Then it gives you a score out of 100, a one-line roast, a downloadable score card, a README badge, and a project summary plus launch post you can paste into the submission form.
 
+## Extras
+
+- **Where you'd rank:** a snapshot of the public Build League leaderboard, with a votes what-if. The site cannot read the live API (CORS), so refresh the snapshot with `python scripts/refresh-leaderboard.py` and commit `data/leaderboard.json`.
+- **Fix-it kit:** copy-paste README, `BharatCode.txt`, `.gitignore` and `.env.example` templates.
+- **Share links:** `?repo=owner/name` opens a finished report.
+
 ## Run it
 
 No build step. Serve the folder with any static server:

@@ -261,13 +261,16 @@ function render(res, ai) {
       <div class="row">
         <button class="btn small" id="dlcard" type="button">Download score card <span class="ico">↓</span></button>
         <button class="btn small outline" id="cpbadge" type="button">Copy README badge <span class="ico">⧉</span></button>
+        <button class="btn small outline" id="share" type="button">Copy share link <span class="ico">⧉</span></button>
       </div>
     </div>
     <div class="card"><h3>Checklist</h3><ul class="checks">${items}</ul></div>
     <div class="card"><h3>Project summary <span class="fix">(paste into the submission form)</span></h3><pre id="sum">${esc(ai.summary)}</pre>
       <h3 style="margin-top:20px">Launch post</h3><pre id="post">${esc(ai.post)}</pre>
       <div class="row"><button class="btn small outline" id="cpsum" type="button">Copy summary <span class="ico">⧉</span></button><button class="btn small outline" id="cppost" type="button">Copy post <span class="ico">⧉</span></button></div>
-      ${ai.source === "template" ? '<p class="fix">Built-in template used. Add an API endpoint and key under "Optional AI" for AI-written text.</p>' : ""}</div>`;
+      ${ai.source === "template" ? '<p class="fix">Built-in template used. Add an API endpoint and key under "Optional AI" for AI-written text.</p>' : ""}</div>
+    ${leaderboardCard(meta)}
+    ${fixKit(meta, checks)}`;
   $("result").classList.add("on");
   $("result").scrollIntoView({ behavior: "smooth", block: "start" });
 
@@ -290,6 +293,151 @@ function render(res, ai) {
     a.href = c.toDataURL("image/png");
     a.click();
   };
+  bindExtras(meta);
+}
+
+
+// ---------- leaderboard snapshot ----------
+let LB = null;
+async function loadLB() {
+  if (LB) return LB;
+  try {
+    const r = await timedFetch("data/leaderboard.json", {}, 6000);
+    if (r.ok) LB = await r.json();
+  } catch (_) {}
+  return LB;
+}
+
+function lbEstimate(stars, votes) {
+  const a = Math.min(100, (stars / LB.maxStars) * 100);
+  const b = Math.min(100, (votes / LB.maxVotes) * 100);
+  const score = (a + b) / 2;
+  const rank = LB.scores.filter((x) => x > score).length + 1;
+  return { score, rank };
+}
+
+function leaderboardCard(meta) {
+  if (!LB) return "";
+  const stars = meta.stargazers_count || 0;
+  const perVote = (50 / LB.maxVotes).toFixed(1);
+  const perStar = (50 / LB.maxStars).toFixed(1);
+  const cutoff10 = LB.top[LB.top.length - 1].score;
+  const top = LB.top.slice(0, 5).map((t, i) => `<li><span class="n">${i + 1}</span><span class="nm">${esc(t.name)}</span><span class="st">${t.stars}★ · ${t.votes} votes · ${t.score}</span></li>`).join("");
+  const zeroStars = LB.stars.filter((x) => x === 0).length;
+  return `<div class="card" id="lb"><h3>Where you'd rank <span class="fix">(snapshot ${esc(LB.asOf)} · ${LB.count} projects)</span></h3>
+    <p class="fix">Score is half GitHub stars and half website votes, each measured against the current leader (${LB.maxStars} stars, ${LB.maxVotes} votes). So <b>one vote is worth about ${perVote} points and one star about ${perStar}</b>. ${zeroStars} of ${LB.count} projects still have zero stars, and the top 10 starts at ${cutoff10} points.</p>
+    <div class="whatif"><div><label for="wi-stars">Your stars</label><input type="number" min="0" id="wi-stars" value="${stars}"></div>
+      <div><label for="wi-votes">Votes you could get</label><input type="number" min="0" id="wi-votes" value="10"></div>
+      <div class="res" id="wi-res"></div></div>
+    <ul class="top5">${top}</ul>
+    <p class="fix">Weights and maxima come from the public leaderboard and change as projects gain votes. Judges' evaluation is separate and not included.</p></div>`;
+}
+
+function fixKit(meta, checks) {
+  const name = meta.name;
+  const desc = (meta.description || "One line on who this helps and what problem it solves.").trim();
+  const readme = `# ${name}
+
+> ${desc}
+
+![demo](demo.gif)
+
+## The problem
+Who has this problem, and why does it matter?
+
+## What it does
+- Feature one
+- Feature two
+- Feature three
+
+## Quick start
+\`\`\`bash
+git clone ${meta.html_url}.git
+cd ${name}
+# install and run steps here
+\`\`\`
+
+## How it uses BharatCode
+Explain which BharatCode model you call, and what it does for the user.
+
+## Tech stack
+List the main tools and libraries.
+
+## License
+MIT
+`;
+  const bc = `Project: ${name}
+Repo: ${meta.html_url}
+Uses the BharatCode API for: (describe what the model does in your project)
+NOTE: confirm the exact BharatCode.txt format with the BharatCode team before submitting.
+`;
+  const ign = `# secrets: never commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# dependencies and build output
+node_modules/
+__pycache__/
+dist/
+build/
+.DS_Store
+`;
+  const envEx = `# Copy to .env and fill in. Never commit the real .env.
+BHARATCODE_API_KEY=
+BHARATCODE_BASE_URL=
+BHARATCODE_MODEL=
+`;
+  window.__kit = { readme, bc, ign, envEx };
+  const need = (id) => checks.some((c) => c.id === id && c.status !== "pass");
+  const rows = [
+    ["README.md template", "kit-readme", need("readme") || need("pitch") || need("install") || need("demo"), readme],
+    ["BharatCode.txt starter", "kit-bc", need("bharatcode"), bc],
+    [".gitignore", "kit-ign", need("secrets"), ign],
+    [".env.example", "kit-env", need("secrets"), envEx],
+  ];
+  const html = rows.map(([label, id, hot, text]) => `<details class="kit"><summary>${label}${hot ? ' <span class="badge">suggested</span>' : ""}</summary><pre>${esc(text)}</pre>
+    <div class="row"><button class="btn small outline" data-kit="${id}" type="button">Copy ${esc(label)} <span class="ico">⧉</span></button></div></details>`).join("");
+  return `<div class="card"><h3>Fix-it kit</h3><p class="fix">Ready-to-paste files for what your check found missing. Edit them before you commit.</p>${html}</div>`;
+}
+
+function bindExtras(meta) {
+  const kit = window.__kit || {};
+  const map = { "kit-readme": kit.readme, "kit-bc": kit.bc, "kit-ign": kit.ign, "kit-env": kit.envEx };
+  document.querySelectorAll("[data-kit]").forEach((b) => {
+    b.onclick = (e) => copyText(map[b.dataset.kit] || "", e.currentTarget);
+  });
+  const share = $("share");
+  if (share) share.onclick = (e) => copyText(shareUrl(meta.full_name), e.currentTarget);
+  if (LB && $("wi-res")) {
+    const upd = () => {
+      const st = Math.max(0, parseInt($("wi-stars").value, 10) || 0);
+      const vt = Math.max(0, parseInt($("wi-votes").value, 10) || 0);
+      const { score, rank } = lbEstimate(st, vt);
+      $("wi-res").innerHTML = `<b>${score.toFixed(1)}</b> points · about rank <b>#${rank}</b> of ${LB.count}`;
+    };
+    $("wi-stars").oninput = upd; $("wi-votes").oninput = upd; upd();
+  }
+}
+
+function shareUrl(fullName) {
+  const u = new URL(location.href);
+  u.search = "";
+  u.hash = "";
+  u.searchParams.set("repo", fullName);
+  return u.toString();
+}
+
+function copyText(t, btn) {
+  const label = btn.firstChild.textContent;
+  const done = () => { btn.firstChild.textContent = "Copied "; setTimeout(() => (btn.firstChild.textContent = label), 1300); };
+  (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(done).catch(() => {
+    const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); done(); } catch (_) {}
+    ta.remove();
+  });
 }
 
 // ---------- main ----------
@@ -302,6 +450,8 @@ async function run(input) {
   $("go").disabled = true; $("gotext").textContent = "Examining…";
   try {
     const res = await analyse(parsed);
+    await loadLB();
+    try { history.replaceState(null, "", shareUrl(res.meta.full_name)); } catch (_) {}
     let ai = { ...templateSummary(res.meta, res.checks), source: "template" };
     try {
       const real = await aiText(res.meta, res.readme);
@@ -321,5 +471,12 @@ $("f").addEventListener("submit", (e) => { e.preventDefault(); run($("url").valu
 $("demo").addEventListener("click", () => { $("url").value = "https://github.com/octocat/Hello-World"; run($("url").value); });
 
 loadSettings();
+(function () {
+  const q = new URLSearchParams(location.search).get("repo");
+  if (q && /^[^/\s]+\/[^/\s]+$/.test(q)) {
+    $("url").value = "https://github.com/" + q;
+    run($("url").value);
+  }
+})();
 tickCountdown();
 setInterval(tickCountdown, 30000);

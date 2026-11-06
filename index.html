@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Submission Doctor</title>
 <meta name="description" content="Paste your GitHub repo. Get a brutally honest hackathon-readiness check, a score card and a README badge.">
+<meta name="theme-color" content="#16110d">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Submission Doctor: check your hackathon repo before the judges do">
+<meta property="og:description" content="Paste your GitHub repo. Get a readiness score, a blunt roast, a fix list, a score card and a README badge. Free.">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Submission Doctor">
+<meta name="twitter:description" content="Check your hackathon repo before the judges do. Free, runs in your browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%23e0a96d'/%3E%3Cpath d='M12 33h10l5-15 10 30 5-15h10' fill='none' stroke='%232a1c10' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Allura&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
@@ -75,6 +83,22 @@
   .sample li{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line);font-size:.92rem}
   .sample .mark{width:22px;height:22px;font-size:.7rem;margin:0}
   .sample .lbl{font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+
+  /* leaderboard + kit */
+  .whatif{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin:16px 0}
+  .whatif input{width:130px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--bg);color:var(--cream);font:500 1rem var(--body)}
+  .whatif input:focus{border-color:var(--tan);outline:0}
+  .whatif label{margin-bottom:6px}
+  .whatif .res{flex:1;min-width:200px;padding:12px 16px;border-radius:14px;background:var(--surface-2);color:var(--cream)}
+  .whatif .res b{color:var(--tan)}
+  ul.top5{list-style:none;margin:8px 0 14px;padding:0}
+  ul.top5 li{display:flex;gap:12px;align-items:baseline;padding:9px 0;border-top:1px solid var(--line);font-size:.92rem}
+  ul.top5 .n{font-family:var(--display);color:var(--tan);width:20px}
+  ul.top5 .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  ul.top5 .st{color:var(--muted);white-space:nowrap;font-size:.85rem}
+  details.kit{background:var(--bg);margin-top:10px;padding:12px 18px;border-radius:16px}
+  details.kit pre{max-height:260px}
+  .badge{display:inline-block;margin-left:8px;padding:2px 10px;border-radius:999px;background:var(--tan);color:var(--tan-ink);font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle}
 
   /* sections */
   section{padding:70px 0;border-top:1px solid var(--line)}
