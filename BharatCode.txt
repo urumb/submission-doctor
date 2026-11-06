@@ -1,0 +1,3 @@
+Submission Doctor - hackathon readiness checker for the BharatCode Build League.
+Static web app. Optional AI-written text uses a user-supplied OpenAI-compatible endpoint.
+TODO: replace this with the exact BharatCode.txt format required by the hackathon.
