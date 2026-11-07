@@ -264,11 +264,12 @@ function render(res, ai) {
         <button class="btn small outline" id="share" type="button">Copy share link <span class="ico">⧉</span></button>
       </div>
     </div>
+    ${aiCard()}
     <div class="card"><h3>Checklist</h3><ul class="checks">${items}</ul></div>
     <div class="card"><h3>Project summary <span class="fix">(paste into the submission form)</span></h3><pre id="sum">${esc(ai.summary)}</pre>
       <h3 style="margin-top:20px">Launch post</h3><pre id="post">${esc(ai.post)}</pre>
       <div class="row"><button class="btn small outline" id="cpsum" type="button">Copy summary <span class="ico">⧉</span></button><button class="btn small outline" id="cppost" type="button">Copy post <span class="ico">⧉</span></button></div>
-      ${ai.source === "template" ? '<p class="fix">Built-in template used. Add an API endpoint and key under "Optional AI" for AI-written text.</p>' : ""}</div>
+      ${ai.source === "template" ? '<p class="fix">Built-in template. Run the AI review above for model-written text.</p>' : ""}</div>
     ${leaderboardCard(meta)}
     ${fixKit(meta, checks)}`;
   $("result").classList.add("on");
@@ -294,6 +295,7 @@ function render(res, ai) {
     a.click();
   };
   bindExtras(meta);
+  bindAi();
 }
 
 
@@ -440,6 +442,115 @@ function copyText(t, btn) {
   });
 }
 
+
+// ---------- AI review (user-supplied OpenAI-compatible endpoint) ----------
+let LAST = null;
+
+function aiConfig() {
+  const base = $("base").value.trim().replace(/\/+$/, "");
+  const key = $("key").value.trim();
+  const model = $("model").value.trim();
+  return base && key && model ? { base, key, model } : null;
+}
+
+function friendly(err) {
+  if (err && err.name === "AbortError") return "The request timed out. Try again.";
+  const m = String((err && err.message) || err);
+  if (/Failed to fetch|NetworkError|Load failed/i.test(m)) return "Could not reach the endpoint. Check the base URL, or the API may block browser calls (CORS).";
+  if (/HTTP 401|HTTP 403/.test(m)) return "The key was rejected (" + m.slice(0, 60) + "). Check the API key.";
+  if (/HTTP 402/.test(m)) return "Your key works, but this account has no API access yet. BharatCode needs a Lite or Pro plan, or a verified student account (college email). Details: " + m.replace(/^HTTP 402:\s*/, "").slice(0, 220);
+  if (/HTTP 404/.test(m)) return "Not found (" + m.slice(0, 120) + "). Check the base URL and model name.";
+  return m;
+}
+
+async function callModel(cfg, messages, ms) {
+  const r = await timedFetch(cfg.base + "/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.key },
+    body: JSON.stringify({ model: cfg.model, messages, temperature: 0.6 }),
+  }, ms || 90000);
+  if (!r.ok) {
+    let d = "";
+    try { d = (await r.text()).slice(0, 200); } catch (_) {}
+    throw new Error("HTTP " + r.status + (d ? ": " + d : ""));
+  }
+  const j = await r.json();
+  const t = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+  if (!t) throw new Error("The model returned an empty response.");
+  return t.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+}
+
+function aiCard() {
+  const on = !!aiConfig();
+  return `<div class="card" id="aicard"><h3>AI review <span class="badge">BharatCode</span></h3>
+    <p class="fix">${on ? "Reads your README and results, tells you what to fix first for the most stars and votes, and writes your submission text." : "Add your API base URL, model and key under “Optional AI” at the bottom of the page to unlock this."}</p>
+    <div class="row"><button class="btn small" id="ai-run" type="button" ${on ? "" : "disabled"}>Run AI review <span class="ico">→</span></button></div>
+    <div id="ai-out"></div></div>`;
+}
+
+function bindAi() {
+  const btn = $("ai-run");
+  if (!btn) return;
+  btn.onclick = runAiReview;
+}
+
+async function runAiReview() {
+  const cfg = aiConfig();
+  const out = $("ai-out");
+  if (!cfg || !LAST) return;
+  const btn = $("ai-run");
+  btn.disabled = true;
+  out.innerHTML = '<p class="fix">Reviewing your repo with the model. This can take up to a minute.</p>';
+  const { meta, checks, score, readme } = LAST;
+  const checkLines = checks.map((c) => `- [${c.status.toUpperCase()}] ${c.label}`).join("\n");
+  const prompt = `You are a blunt but kind reviewer helping a developer win the BharatCode Build League hackathon. Ranking is half GitHub stars and half website votes, then judges' evaluation. Judges read the repo summary and README.
+
+Repo: ${meta.full_name}
+Description: ${meta.description || "(none)"}
+Stars: ${meta.stargazers_count}
+Readiness score from automated checks: ${score}/100
+Checks:
+${checkLines}
+
+README (may be truncated):
+${readme ? readme.slice(0, 3500) : "(no README)"}
+
+Respond in plain text using exactly these five headings, each on its own line starting with "## ":
+## Verdict
+Two sentences: what is strong, what is weak.
+## Fix first
+A numbered list of the 3 changes that will earn the most stars and votes, most important first. Be specific to this repo.
+## README intro
+A rewritten opening paragraph (under 120 words) that states who it helps and the problem it solves.
+## Submission summary
+A punchy summary under 900 characters for the hackathon form. Mention how it uses the BharatCode API only if the README says it does.
+## Launch post
+A short LinkedIn or X post asking for a GitHub star and a vote. No hashtag spam.`;
+  try {
+    const text = await callModel(cfg, [{ role: "user", content: prompt }], 120000);
+    const parts = text.split(/^##\s+/m).map((x) => x.trim()).filter(Boolean);
+    if (parts.length < 2) {
+      out.innerHTML = `<pre>${esc(text)}</pre>`;
+    } else {
+      out.innerHTML = parts.map((p, i) => {
+        const nl = p.indexOf("\n");
+        const title = nl === -1 ? p : p.slice(0, nl).trim();
+        const body = nl === -1 ? "" : p.slice(nl + 1).trim();
+        return `<h3 style="margin-top:18px">${esc(title)}</h3><pre>${esc(body)}</pre><div class="row"><button class="btn small outline" data-ai="${i}" type="button">Copy <span class="ico">⧉</span></button></div>`;
+      }).join("");
+      out.querySelectorAll("[data-ai]").forEach((b) => {
+        const body = parts[+b.dataset.ai];
+        const nl = body.indexOf("\n");
+        b.onclick = (e) => copyText(nl === -1 ? body : body.slice(nl + 1).trim(), e.currentTarget);
+      });
+    }
+  } catch (err) {
+    out.innerHTML = `<p class="err on">AI review failed: ${esc(friendly(err))}</p>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- main ----------
 async function run(input) {
   showError("");
@@ -450,15 +561,10 @@ async function run(input) {
   $("go").disabled = true; $("gotext").textContent = "Examining…";
   try {
     const res = await analyse(parsed);
+    LAST = res;
     await loadLB();
     try { history.replaceState(null, "", shareUrl(res.meta.full_name)); } catch (_) {}
-    let ai = { ...templateSummary(res.meta, res.checks), source: "template" };
-    try {
-      const real = await aiText(res.meta, res.readme);
-      if (real && real.summary) ai = { summary: real.summary, post: real.post || ai.post, source: "ai" };
-    } catch (err) {
-      showError("AI text failed (" + err.message + "), showing the template instead.");
-    }
+    const ai = { ...templateSummary(res.meta, res.checks), source: "template" };
     render(res, ai);
   } catch (err) {
     showError(err.message);
@@ -478,5 +584,27 @@ loadSettings();
     run($("url").value);
   }
 })();
+
+$("test").onclick = async () => {
+  saveSettings();
+  const cfg = aiConfig();
+  const out = $("testres");
+  if (!cfg) { out.textContent = "Fill in the base URL, model name and key first."; return; }
+  out.textContent = "Testing…";
+  $("test").disabled = true;
+  try {
+    const t = await callModel(cfg, [{ role: "user", content: "Reply with the single word OK." }], 30000);
+    out.textContent = "Connected. The model replied: " + t.slice(0, 40);
+  } catch (e) {
+    out.textContent = "Failed: " + friendly(e);
+  } finally {
+    $("test").disabled = false;
+  }
+};
+["base", "model", "key"].forEach((id) => $(id).addEventListener("input", () => {
+  const b = $("ai-run");
+  if (b) b.disabled = !aiConfig();
+}));
+
 tickCountdown();
 setInterval(tickCountdown, 30000);
