@@ -135,7 +135,12 @@ async function analyse({ owner, repo }) {
   add("public", "Repo is public", meta.private ? "fail" : "pass", 15, "Make the repository public in Settings → General → Danger Zone.");
   add("bharatcode", "BharatCode.txt is in the repo root", bcFile ? "pass" : "fail", 25,
     bcLooseName ? `Found "${bcLooseName}". The file must be named exactly BharatCode.txt (case-sensitive).` : "Add a file named exactly BharatCode.txt to the repo root.");
-  if (bcFile) add("bcnonempty", "BharatCode.txt is not empty", bcText.trim().length > 0 ? "pass" : "warn", 3, "Put something useful in it. Check the hackathon page and Discord for the expected format.");
+  if (bcFile) {
+    const placeholder = /\b(todo|placeholder|lorem ipsum|replace this)\b/i.test(bcText);
+    const ok = bcText.trim().length > 0 && !placeholder;
+    add("bcnonempty", "BharatCode.txt has real content", ok ? "pass" : "warn", 3,
+      placeholder ? "BharatCode.txt still contains placeholder text such as TODO. Replace it before you submit." : "Put something useful in it. Check the hackathon page and Discord for the expected format.");
+  }
   add("readme", "Has a README", readme ? "pass" : "fail", 10, "Add a README.md. It is the first thing voters and judges read.");
   if (readme) {
     add("pitch", "README explains the problem in the first screen", readme.slice(0, 600).trim().length > 120 ? "pass" : "warn", 7, "Open with one clear sentence on who it helps and what problem it solves.");
@@ -146,6 +151,15 @@ async function analyse({ owner, repo }) {
   add("license", "Has a LICENSE file", names.some((n) => /^licen[sc]e/i.test(n)) ? "pass" : "warn", 4, "Add an open-source license (MIT is the usual choice).");
   add("desc", "Repo description is set", meta.description ? "pass" : "warn", 3, "Add a one-line description in the repo's About box.");
   add("topics", "Repo has topics/tags", (meta.topics || []).length >= 2 ? "pass" : "warn", 2, "Add topics such as bharatcode, hackathon, ai so people can discover it.");
+  const liveLink = !!meta.homepage || /https?:\/\/[^\s)]*(github\.io|vercel\.app|netlify\.app|pages\.dev|onrender\.com|streamlit\.app|huggingface\.co\/spaces|railway\.app|fly\.dev)/i.test(readme);
+  add("live", "Has a live demo link", liveLink ? "pass" : "warn", 6, "Deploy it (GitHub Pages is free) and add the link to the repo's About box and the README. Voters try things that run in one click.");
+  if (readme) add("depth", "README is detailed enough (500+ characters)", readme.trim().length >= 500 ? "pass" : "warn", 3, "Add the problem, features, setup and how it uses BharatCode.");
+  let commitCount = null;
+  try {
+    const cr = await gh(`/repos/${owner}/${repo}/commits?per_page=10`);
+    if (cr.ok) commitCount = (await cr.json()).length;
+  } catch (_) {}
+  if (commitCount !== null) add("commits", "Commit history shows real work (3+ commits)", commitCount >= 3 ? "pass" : "warn", 2, "One giant commit looks rushed. Commit as you build, with clear messages.");
   add("secrets", "No obvious secrets committed", findings.length ? "fail" : "pass", 15,
     findings.length ? "Remove and ROTATE these immediately: " + [...new Set(findings)].join("; ") : "");
 
@@ -184,25 +198,6 @@ function templateSummary(meta, checks) {
     summary: `${name} is ${desc}. It is open source, runs with a quick setup, and was built for the BharatCode Build League. Try it, star the repo and vote if it helps you.`,
     post: `I just built ${name} for the BharatCode Build League: ${desc}.\n\nRepo: ${meta.html_url}\n\nIf it is useful, a star on GitHub and a vote on the hackathon page would mean a lot. #BharatCode #BuildLeague`,
   };
-}
-
-async function aiText(meta, readme) {
-  const base = $("base").value.trim().replace(/\/+$/, "");
-  const key = $("key").value.trim();
-  const model = $("model").value.trim();
-  if (!base || !key || !model) return null;
-  const prompt = `Repo: ${meta.full_name}\nDescription: ${meta.description || "(none)"}\nREADME excerpt:\n${readme.slice(0, 2500)}\n\nWrite (1) a punchy hackathon project summary under 900 characters, then a line containing only ---, then (2) a short LinkedIn/X launch post asking for a GitHub star and a vote. No hashtags spam. Plain text.`;
-  const r = await timedFetch(base + "/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
-    body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }], temperature: 0.7 }),
-  }, 45000);
-  if (!r.ok) throw new Error("AI endpoint returned " + r.status);
-  const j = await r.json();
-  const text = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
-  if (!text) throw new Error("AI endpoint returned no text");
-  const [a, b] = text.split(/\n-{3,}\n/);
-  return { summary: (a || "").trim(), post: (b || "").trim() };
 }
 
 // ---------- rendering ----------

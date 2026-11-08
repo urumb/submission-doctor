@@ -1,3 +1,7 @@
-Submission Doctor - hackathon readiness checker for the BharatCode Build League.
-Static web app. Optional AI-written text uses a user-supplied OpenAI-compatible endpoint.
-TODO: replace this with the exact BharatCode.txt format required by the hackathon.
+Project: Submission Doctor
+Repo: https://github.com/urumb/submission-doctor
+Live: https://urumb.github.io/submission-doctor/
+
+What it is: a free, browser-only readiness checker for BharatCode Build League entries. Paste a GitHub repo and get a score, a fix list, a share card and a README badge.
+
+How it uses the BharatCode API: the optional AI review sends the repo's README and check results to a BharatCode chat-completions endpoint (base URL, model and API key are entered by the user and kept in their browser). The model returns a verdict, a prioritised fix list, a rewritten README intro, a submission summary and a launch post. The checks, scoring and leaderboard panel run without the model.
