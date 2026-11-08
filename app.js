@@ -27,6 +27,10 @@ function loadSettings() {
     localStorage.removeItem("sd_key");
     localStorage.removeItem("sd_ghtoken");
   } catch (_) {}
+  // Pre-fill BharatCode's endpoint and model so people only need to paste their key.
+  // (Both are editable, and the page works with any OpenAI-compatible endpoint.)
+  if (!$("base").value) $("base").value = "https://bharatcode.ai/api/model/v1";
+  if (!$("model").value) $("model").value = "qwen-3.8-27b";
 }
 function saveSettings() {
   try {
