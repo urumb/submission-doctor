@@ -20,9 +20,11 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%23e0a96d'/%3E%3Cpath d='M12 33h10l5-15 10 30 5-15h10' fill='none' stroke='%232a1c10' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Allura&family=DM+Sans:wght@400;500;700&display=swap" media="print" onload="this.media='all'">
+<link id="fontcss" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Allura&family=DM+Sans:wght@400;500;700&display=swap" media="print">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Allura&family=DM+Sans:wght@400;500;700&display=swap"></noscript>
 <meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; base-uri 'none'; form-action 'none'; object-src 'none'">
 <style>
   :root{
     --bg:#16110d; --surface:#1f1812; --surface-2:#292018; --line:rgba(244,237,226,.10);
@@ -111,6 +113,8 @@
   details.kit{background:var(--bg);margin-top:10px;padding:12px 18px;border-radius:16px}
   details.kit pre{max-height:260px}
   .badge{display:inline-block;margin-left:8px;padding:2px 10px;border-radius:999px;background:var(--tan);color:var(--tan-ink);font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle}
+
+  section,#aicard,#result{scroll-margin-top:96px}
 
   /* sections */
   section{padding:70px 0;border-top:1px solid var(--line)}
@@ -263,18 +267,18 @@
       <h2 class="title">Bring your own key.</h2>
       <details>
         <summary>Connect BharatCode (unlocks the AI review)</summary>
-        <p>Leave empty to use built-in templates. Your key stays in this browser and is only sent to the endpoint you enter. Use any OpenAI-compatible chat endpoint, such as the BharatCode API.</p>
+        <p><b>Your key is safe here.</b> It stays in this tab's memory and is sent only to the endpoint you enter, over HTTPS. This site has no server, never saves your key to disk or storage, and forgets it when you close or reload the page. Even so, use a key you can revoke, and only on a device you trust. Works with any OpenAI-compatible chat endpoint, such as the BharatCode API.</p>
         <div class="fields">
           <div class="full"><label for="base">API base URL</label><input type="text" id="base" placeholder="https://your-endpoint/v1" autocomplete="off"></div>
           <div><label for="model">Model name</label><input type="text" id="model" placeholder="model-name" autocomplete="off"></div>
-          <div><label for="key">API key</label><input type="password" id="key" placeholder="sk-..." autocomplete="off"></div>
+          <div><label for="key">API key</label><input type="password" id="key" placeholder="paste your key" autocomplete="new-password" spellcheck="false" autocapitalize="off"></div>
         </div>
-        <div class="row" style="align-items:center"><button class="btn small" id="test" type="button">Test connection <span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></button><span id="testres" class="fix" role="status"></span></div>
+        <div class="row" style="align-items:center"><button class="btn small" id="test" type="button">Test connection <span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></button><button class="btn small outline" id="forget" type="button">Forget key <span class="ico">×</span></button><button class="btn small outline" id="backres" type="button" hidden>Back to my results <span class="ico">↑</span></button><span id="testres" class="fix" role="status"></span></div>
       </details>
       <details>
         <summary>More than 60 checks an hour? Add a GitHub token</summary>
-        <p>GitHub allows about 60 anonymous requests an hour. A free personal access token with no scopes raises that to 5,000. It stays in this browser.</p>
-        <div class="fields"><div class="full"><label for="ghtoken">GitHub token (optional)</label><input type="password" id="ghtoken" placeholder="ghp_..." autocomplete="off"></div></div>
+        <p>GitHub allows about 60 anonymous requests an hour. A free personal access token with no scopes raises that to 5,000. It is kept in memory only and sent only to api.github.com.</p>
+        <div class="fields"><div class="full"><label for="ghtoken">GitHub token (optional)</label><input type="password" id="ghtoken" placeholder="ghp_..." autocomplete="new-password" spellcheck="false" autocapitalize="off"></div></div>
       </details>
     </section>
   </div>

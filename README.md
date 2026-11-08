@@ -24,7 +24,7 @@ Hackathon projects lose votes for boring reasons: no demo GIF, no install steps,
 
 ## How it uses BharatCode
 
-The checks, score and leaderboard panel are plain code and need no model. The **AI review** is the part that calls BharatCode: you enter the base URL, model and your own API key, and the page sends a prompt to `/chat/completions` on that endpoint. The key is kept in your browser and is only sent to the endpoint you enter. It needs an account with BharatCode API access (a Lite or Pro plan, or a verified student account).
+The checks, score and leaderboard panel are plain code and need no model. The **AI review** is the part that calls BharatCode: you enter the base URL, model and your own API key, and the page sends a prompt to `/chat/completions` on that endpoint. The key is held in memory only: it is never saved to storage, and it disappears when you close or reload the tab. It is sent only over HTTPS (or to a local test server) to the endpoint you enter, with no cookies or referrer, and it is scrubbed from any error text. The page also ships a strict Content Security Policy that blocks injected scripts, and there is no server, so nothing is ever sent to the author. Even so, use a key you can revoke. It needs an account with BharatCode API access (a Lite or Pro plan, or a verified student account).
 
 ## Run it locally
 

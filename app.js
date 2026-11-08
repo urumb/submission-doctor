@@ -1,6 +1,13 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
+
+// Clickjacking guard: never run inside someone else's frame (a framed page could trick users into pasting a key).
+try { if (window.top !== window.self) window.top.location = window.self.location; } catch (_) { document.documentElement.hidden = true; }
+
+// Fonts load without blocking first paint (no inline handler, so a strict CSP works).
+const fontLink = document.getElementById("fontcss");
+if (fontLink) fontLink.media = "all";
 const GH = "https://api.github.com";
 
 const SECRET_PATTERNS = [
@@ -15,12 +22,17 @@ const SECRET_PATTERNS = [
 // ---------- persistence for optional AI settings (per-browser convenience only) ----------
 function loadSettings() {
   try {
-    for (const k of ["base", "model", "key", "ghtoken"]) $(k).value = localStorage.getItem("sd_" + k) || "";
+    for (const k of ["base", "model"]) $(k).value = localStorage.getItem("sd_" + k) || "";
+    // Secrets are never stored. Remove any saved by earlier versions of this page.
+    localStorage.removeItem("sd_key");
+    localStorage.removeItem("sd_ghtoken");
   } catch (_) {}
 }
 function saveSettings() {
   try {
-    for (const k of ["base", "model", "key", "ghtoken"]) localStorage.setItem("sd_" + k, $(k).value.trim());
+    // Only non-secret settings are saved. The API key and GitHub token stay in memory only:
+    // pages under one github.io account share a storage origin, so a stored secret could be read by other pages.
+    for (const k of ["base", "model"]) localStorage.setItem("sd_" + k, $(k).value.trim());
   } catch (_) {}
 }
 
@@ -343,7 +355,7 @@ function lbEstimate(stars, votes) {
 
 function leaderboardCard(meta) {
   if (!LB) return "";
-  const stars = meta.stargazers_count || 0;
+  const stars = Number(meta.stargazers_count) || 0;
   const perVote = (50 / LB.maxVotes).toFixed(1);
   const perStar = (50 / LB.maxStars).toFixed(1);
   const cutoff10 = LB.top[LB.top.length - 1].score;
@@ -476,25 +488,44 @@ function aiConfig() {
   return base && key && model ? { base, key, model } : null;
 }
 
+// The key is only ever sent over HTTPS (or to a local test server), and never to a URL with embedded credentials.
+function endpointProblem(base) {
+  let u;
+  try { u = new URL(base); } catch (_) { return "The base URL is not a valid web address."; }
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
+  if (u.protocol !== "https:" && !(u.protocol === "http:" && local)) return "For your key's safety the base URL must start with https://";
+  if (u.username || u.password) return "Remove the username and password from the base URL.";
+  return "";
+}
+
 function friendly(err) {
   if (err && err.name === "AbortError") return "The request timed out. Try again.";
   const m = String((err && err.message) || err);
   if (/Failed to fetch|NetworkError|Load failed/i.test(m)) return "Could not reach the endpoint. Check the base URL, or the API may block browser calls (CORS).";
   if (/HTTP 401|HTTP 403/.test(m)) return "The key was rejected (" + m.slice(0, 60) + "). Check the API key.";
   if (/HTTP 402/.test(m)) return "Your key works, but this account has no API access yet. BharatCode needs a Lite or Pro plan, or a verified student account (college email). Details: " + m.replace(/^HTTP 402:\s*/, "").slice(0, 220);
+  if (/HTTP 503/.test(m)) return "BharatCode says the model is unavailable right now (503). It may be busy, or the model name may not be offered. Try again in a minute, or check the model name (for example qwen-3.8-27b).";
+  if (/HTTP 429/.test(m)) return "Too many requests right now (429). Wait a moment and try again.";
   if (/HTTP 404/.test(m)) return "Not found (" + m.slice(0, 120) + "). Check the base URL and model name.";
   return m;
 }
 
 async function callModel(cfg, messages, ms) {
+  const problem = endpointProblem(cfg.base);
+  if (problem) throw new Error(problem);
   const r = await timedFetch(cfg.base + "/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.key },
     body: JSON.stringify({ model: cfg.model, messages, temperature: 0.6 }),
+    credentials: "omit",
+    cache: "no-store",
+    referrerPolicy: "no-referrer",
+    redirect: "error", // a redirect could forward the key to another host
   }, ms || 90000);
   if (!r.ok) {
     let d = "";
     try { d = (await r.text()).slice(0, 200); } catch (_) {}
+    d = d.split(cfg.key).join("[hidden]"); // never echo the key back into the page
     throw new Error("HTTP " + r.status + (d ? ": " + d : ""));
   }
   const j = await r.json();
@@ -506,8 +537,8 @@ async function callModel(cfg, messages, ms) {
 function aiCard() {
   const on = !!aiConfig();
   return `<div class="card" id="aicard"><h3>AI review <span class="badge">BharatCode</span></h3>
-    <p class="fix">${on ? "Reads your README and results, tells you what to fix first for the most stars and votes, and writes your submission text." : "Add your API base URL, model and key under “Optional AI” at the bottom of the page to unlock this."}</p>
-    <div class="row"><button class="btn small" id="ai-run" type="button" ${on ? "" : "disabled"}>Run AI review <span class="ico">→</span></button></div>
+    <p class="fix">Reads your README and results, tells you what to fix first for the most stars and votes, and writes your submission text.${on ? "" : " It needs your BharatCode API key, and the button will take you to where you add it."}</p>
+    <div class="row"><button class="btn small" id="ai-run" type="button">Run AI review <span class="ico">→</span></button></div>
     <div id="ai-out"></div></div>`;
 }
 
@@ -517,10 +548,23 @@ function bindAi() {
   btn.onclick = runAiReview;
 }
 
+// No key yet: open the "Optional AI" panel, scroll to it and focus the first empty field.
+function goToKeySetup() {
+  const d = document.querySelector("#ai details");
+  if (d) d.open = true;
+  const target = ["base", "model", "key"].map($).find((el) => !el.value.trim()) || $("key");
+  const back = $("backres");
+  if (back && LAST) back.hidden = false;
+  $("testres").textContent = "Add your base URL, model and key, click Test connection, then use “Back to my results” and click Run AI review.";
+  $("ai").scrollIntoView({ behavior: "smooth", block: "start" });
+  setTimeout(() => target.focus({ preventScroll: true }), 450);
+}
+
 async function runAiReview() {
   const cfg = aiConfig();
   const out = $("ai-out");
-  if (!cfg || !LAST) return;
+  if (!cfg) { goToKeySetup(); return; }
+  if (!LAST) return;
   const btn = $("ai-run");
   btn.disabled = true;
   out.innerHTML = '<p class="fix">Reviewing your repo with the model. This can take up to a minute.</p>';
@@ -643,10 +687,15 @@ $("test").onclick = async () => {
     $("test").disabled = false;
   }
 };
-["base", "model", "key"].forEach((id) => $(id).addEventListener("input", () => {
-  const b = $("ai-run");
-  if (b) b.disabled = !aiConfig();
-}));
+$("forget").onclick = () => {
+  $("key").value = "";
+  $("ghtoken").value = "";
+  $("testres").textContent = "Cleared. Nothing was stored, so there is nothing else to remove.";
+};
+$("backres").onclick = () => {
+  const t = $("aicard") || $("result");
+  if (t) t.scrollIntoView({ behavior: "smooth", block: "start" });
+};
 
 tickCountdown();
 setInterval(tickCountdown, 30000);
