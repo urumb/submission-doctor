@@ -35,9 +35,9 @@ const DEADLINE = new Date("2026-11-10T23:59:00+05:30");
 function tickCountdown() {
   const ms = DEADLINE - Date.now();
   const el = $("countdown");
-  if (ms <= 0) { el.innerHTML = "<b>Deadline passed</b> · 10 Nov, 11:59 PM IST"; return; }
+  if (ms <= 0) { el.innerHTML = '<b>Deadline passed</b><span class="d"> · 10 Nov, 11:59 PM IST</span>'; return; }
   const d = Math.floor(ms / 864e5), h = Math.floor((ms % 864e5) / 36e5), m = Math.floor((ms % 36e5) / 6e4);
-  el.innerHTML = `<b>${d}d ${h}h ${m}m left</b> · deadline 10 Nov, 11:59 PM IST`;
+  el.innerHTML = `<b>${d}d ${h}h ${m}m left</b><span class="d"> · deadline 10 Nov, 11:59 PM IST</span>`;
 }
 
 // ---------- GitHub helpers ----------
@@ -90,26 +90,49 @@ async function fetchFileText(owner, repo, path) {
 }
 
 // ---------- analysis ----------
+// Short-lived per-tab cache so reloads and shared links do not spend GitHub's 60/hour limit.
+async function analyseCached(p, fresh) {
+  const key = "sd_c_" + p.owner.toLowerCase() + "/" + p.repo.toLowerCase();
+  if (!fresh) {
+    try {
+      const c = JSON.parse(sessionStorage.getItem(key) || "null");
+      if (c && Date.now() - c.t < 10 * 60 * 1000) return c.v;
+    } catch (_) {}
+  }
+  const v = await analyse(p);
+  try { sessionStorage.setItem(key, JSON.stringify({ t: Date.now(), v })); } catch (_) {}
+  return v;
+}
+
 async function analyse({ owner, repo }) {
   const metaRes = await gh(`/repos/${owner}/${repo}`);
   if (metaRes.status === 404) throw new Error("Repo not found, or it is private. The hackathon needs it public.");
   if (!metaRes.ok) throw new Error("GitHub returned an error (" + metaRes.status + ").");
   const meta = await metaRes.json();
 
-  const rootRes = await gh(`/repos/${owner}/${repo}/contents`);
+  // three independent requests, fired together
+  const [rootRes, readmeRes, commitsRes] = await Promise.all([
+    gh(`/repos/${owner}/${repo}/contents`),
+    gh(`/repos/${owner}/${repo}/readme`),
+    gh(`/repos/${owner}/${repo}/commits?per_page=10`).catch(() => null),
+  ]);
   const root = rootRes.ok ? await rootRes.json() : [];
   const names = Array.isArray(root) ? root.map((f) => f.name) : [];
 
-  const readmeRes = await gh(`/repos/${owner}/${repo}/readme`);
   let readme = "";
   if (readmeRes.ok) {
     const j = await readmeRes.json();
     readme = j.encoding === "base64" && j.content ? b64ToText(j.content) : "";
   }
 
+  let commitCount = null;
+  if (commitsRes && commitsRes.ok) {
+    try { commitCount = (await commitsRes.json()).length; } catch (_) {}
+  }
+
   const bcFile = Array.isArray(root) ? root.find((f) => f.name === "BharatCode.txt") : null;
   const bcLooseName = names.find((n) => n.toLowerCase().startsWith("bharatcode") && n !== "BharatCode.txt");
-  const bcText = bcFile ? await fetchFileText(owner, repo, bcFile.name) : "";
+  const bcPromise = bcFile ? fetchFileText(owner, repo, bcFile.name) : Promise.resolve("");
 
   // secret scan: root files + README, small text files only
   const findings = [];
@@ -120,6 +143,7 @@ async function analyse({ owner, repo }) {
     .filter((f) => f.type === "file" && f.size > 0 && f.size < 100000 && /\.(js|ts|py|json|yml|yaml|env|txt|md|toml|cfg|ini|sh)$/i.test(f.name))
     .slice(0, 10);
   const texts = await Promise.all(scanTargets.map((f) => fetchFileText(owner, repo, f.name).then((t) => [f.name, t])));
+  const bcText = await bcPromise;
   texts.push(["README", readme]);
   for (const [name, t] of texts) {
     for (const [re, label] of SECRET_PATTERNS) if (re.test(t)) findings.push(`${label} in ${name}`);
@@ -127,7 +151,15 @@ async function analyse({ owner, repo }) {
 
   const lower = readme.toLowerCase();
   const has = (re) => re.test(lower);
-  const imgOrVideo = /!\[[^\]]*\]\([^)]+\)|<img |\.gif|\.mp4|youtu\.?be|loom\.com/i.test(readme);
+  // Demo media only counts if it can actually load: external image/video, or a local file that exists.
+  const localRefs = [
+    ...[...readme.matchAll(/!\[[^\]]*\]\(\s*<?(?!https?:|data:|\/\/|#)([^)\s>]+)/gi)].map((m) => m[1]),
+    ...[...readme.matchAll(/<img[^>]+src=["'](?!https?:|data:|\/\/)([^"']+)/gi)].map((m) => m[1]),
+  ].map((p) => p.replace(/^\.\//, "").split(/[?#]/)[0]).filter(Boolean);
+  const missingLocal = localRefs.filter((p) => !p.includes("/") && !names.includes(p));
+  const externalMedia = /!\[[^\]]*\]\(\s*https?:|<img[^>]+src=["']https?:|youtu\.?be|loom\.com|\.mp4/i.test(readme);
+  const workingLocal = localRefs.some((p) => p.includes("/") || names.includes(p));
+  const demoOk = externalMedia || workingLocal;
 
   const checks = [];
   const add = (id, label, status, weight, fix) => checks.push({ id, label, status, weight, fix });
@@ -145,7 +177,8 @@ async function analyse({ owner, repo }) {
   if (readme) {
     add("pitch", "README explains the problem in the first screen", readme.slice(0, 600).trim().length > 120 ? "pass" : "warn", 7, "Open with one clear sentence on who it helps and what problem it solves.");
     add("install", "README says how to install or run it", has(/install|getting started|quick ?start|npm |pip |docker|usage|how to run/) ? "pass" : "fail", 10, "Add a copy-paste install and run section. If voters cannot run it in under a minute, they will not star it.");
-    add("demo", "README has a screenshot, GIF or video", imgOrVideo ? "pass" : "fail", 10, "Add a demo GIF near the top. This is the single biggest driver of stars.");
+    add("demo", "README has a screenshot, GIF or video", demoOk ? "pass" : "fail", 10,
+      missingLocal.length ? `Your README points to ${missingLocal[0]} but that file is not in the repo root, so the image is broken. Add the file and push.` : "Add a demo GIF near the top. This is the single biggest driver of stars.");
     add("bharatmention", "README mentions BharatCode", has(/bharatcode|bharat code/) ? "pass" : "warn", 4, "Say how your project uses the BharatCode API. Judges look for it.");
   }
   add("license", "Has a LICENSE file", names.some((n) => /^licen[sc]e/i.test(n)) ? "pass" : "warn", 4, "Add an open-source license (MIT is the usual choice).");
@@ -154,11 +187,6 @@ async function analyse({ owner, repo }) {
   const liveLink = !!meta.homepage || /https?:\/\/[^\s)]*(github\.io|vercel\.app|netlify\.app|pages\.dev|onrender\.com|streamlit\.app|huggingface\.co\/spaces|railway\.app|fly\.dev)/i.test(readme);
   add("live", "Has a live demo link", liveLink ? "pass" : "warn", 6, "Deploy it (GitHub Pages is free) and add the link to the repo's About box and the README. Voters try things that run in one click.");
   if (readme) add("depth", "README is detailed enough (500+ characters)", readme.trim().length >= 500 ? "pass" : "warn", 3, "Add the problem, features, setup and how it uses BharatCode.");
-  let commitCount = null;
-  try {
-    const cr = await gh(`/repos/${owner}/${repo}/commits?per_page=10`);
-    if (cr.ok) commitCount = (await cr.json()).length;
-  } catch (_) {}
   if (commitCount !== null) add("commits", "Commit history shows real work (3+ commits)", commitCount >= 3 ? "pass" : "warn", 2, "One giant commit looks rushed. Commit as you build, with clear messages.");
   add("secrets", "No obvious secrets committed", findings.length ? "fail" : "pass", 15,
     findings.length ? "Remove and ROTATE these immediately: " + [...new Set(findings)].join("; ") : "");
@@ -547,7 +575,7 @@ A short LinkedIn or X post asking for a GitHub star and a vote. No hashtag spam.
 }
 
 // ---------- main ----------
-async function run(input) {
+async function run(input, fresh) {
   showError("");
   $("result").classList.remove("on");
   const parsed = parseRepo(input);
@@ -555,7 +583,7 @@ async function run(input) {
   saveSettings();
   $("go").disabled = true; $("gotext").textContent = "Examining…";
   try {
-    const res = await analyse(parsed);
+    const res = await analyseCached(parsed, fresh);
     LAST = res;
     await loadLB();
     try { history.replaceState(null, "", shareUrl(res.meta.full_name)); } catch (_) {}
@@ -568,12 +596,31 @@ async function run(input) {
   }
 }
 
-$("f").addEventListener("submit", (e) => { e.preventDefault(); run($("url").value); });
-$("demo").addEventListener("click", () => { $("url").value = "https://github.com/octocat/Hello-World"; run($("url").value); });
+$("f").addEventListener("submit", (e) => { e.preventDefault(); run($("url").value, true); });
+// Bundled real snapshot: instant, and costs no GitHub API requests.
+async function loadExample() {
+  showError("");
+  $("result").classList.remove("on");
+  try {
+    const r = await timedFetch("data/example.json", {}, 6000);
+    if (!r.ok) throw new Error("missing");
+    const ex = await r.json();
+    await loadLB();
+    $("url").value = ex.meta.html_url;
+    LAST = { meta: ex.meta, checks: ex.checks, score: ex.score, readme: ex.readme };
+    render(LAST, { ...templateSummary(ex.meta, ex.checks), source: "template" });
+    $("out").insertAdjacentHTML("afterbegin", `<p class="fix">Example report: a snapshot of this project's own repo taken ${esc(ex.asOf)}. Paste your repo above for live results.</p>`);
+  } catch (_) {
+    showError("Could not load the example. Check your connection and try again.");
+  }
+}
+$("demo").addEventListener("click", loadExample);
 
 loadSettings();
 (function () {
-  const q = new URLSearchParams(location.search).get("repo");
+  const params = new URLSearchParams(location.search);
+  if (params.get("example")) { loadExample(); return; }
+  const q = params.get("repo");
   if (q && /^[^/\s]+\/[^/\s]+$/.test(q)) {
     $("url").value = "https://github.com/" + q;
     run($("url").value);

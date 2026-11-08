@@ -17,7 +17,9 @@ Hackathon projects lose votes for boring reasons: no demo GIF, no install steps,
 - **Where you'd rank.** A snapshot of the public Build League leaderboard plus a votes what-if calculator. Score is half GitHub stars and half website votes, each measured against the current leader, so right now one vote and one star are each worth roughly 0.8 points (the exact values shift as the leader changes).
 - **Fix-it kit.** Copy-paste `README.md`, `BharatCode.txt`, `.gitignore` and `.env.example` templates for whatever your check found missing.
 - **Score card and badge.** Download a share image and copy a README badge.
-- **Share links.** `?repo=owner/name` opens a finished report.
+- **Share links.** `?repo=owner/name` opens a finished report. `?example=1` opens a bundled example instantly, with no GitHub requests.
+- **Fast.** The GitHub requests run in parallel (about 1.5 s for a full check) and results are cached for 10 minutes per tab.
+- **Honest demo check.** It only counts a README image or GIF if the file really exists in the repo, so a broken `![demo](demo.gif)` is caught.
 - **AI review (optional).** Add a BharatCode API key and the model reads your README and results, then tells you what to fix first and writes your submission summary, README intro and launch post.
 
 ## How it uses BharatCode
