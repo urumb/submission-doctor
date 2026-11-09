@@ -586,6 +586,8 @@ ${checkLines}
 README (may be truncated):
 ${readme ? readme.slice(0, 3500) : "(no README)"}
 
+Rules: use only facts that appear in the data above. Do not invent personal stories, anecdotes, statistics, features or results, and write the launch post so the author can post it truthfully without edits. Do not suggest star-for-star or vote swaps, paid votes or anything else that could break hackathon rules; suggest honest sharing instead.
+
 Respond in plain text using exactly these five headings, each on its own line starting with "## ":
 ## Verdict
 Two sentences: what is strong, what is weak.
