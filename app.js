@@ -552,6 +552,8 @@ function bindAi() {
   btn.onclick = runAiReview;
 }
 
+const AI_NOTE = '<p class="fix">AI-written text can contain mistakes or claims that are not true of you. Read it and edit it before you post or submit it.</p>';
+
 // No key yet: open the "Optional AI" panel, scroll to it and focus the first empty field.
 function goToKeySetup() {
   const d = document.querySelector("#ai details");
@@ -598,14 +600,14 @@ A rewritten opening paragraph (under 120 words) that states who it helps and the
 ## Submission summary
 A punchy summary under 900 characters for the hackathon form. Mention how it uses the BharatCode API only if the README says it does.
 ## Launch post
-A short LinkedIn or X post asking for a GitHub star and a vote. No hashtag spam.`;
+A short LinkedIn or X post of 3 to 5 lines. Follow this shape exactly: line 1 starts with "I built ${meta.name}," followed by what it does, using only facts from the README. Then one line inviting people to try it. Then the repo link, then a request for a GitHub star and a vote. Never say why the author built it, never mention the author's past experiences, struggles or motives, and never use phrases like "because my" or "I kept". No hashtag spam.`;
   try {
     const text = await callModel(cfg, [{ role: "user", content: prompt }], 120000);
     const parts = text.split(/^##\s+/m).map((x) => x.trim()).filter(Boolean);
     if (parts.length < 2) {
-      out.innerHTML = `<pre>${esc(text)}</pre>`;
+      out.innerHTML = `${AI_NOTE}<pre>${esc(text)}</pre>`;
     } else {
-      out.innerHTML = parts.map((p, i) => {
+      out.innerHTML = AI_NOTE + parts.map((p, i) => {
         const nl = p.indexOf("\n");
         const title = nl === -1 ? p : p.slice(0, nl).trim();
         const body = nl === -1 ? "" : p.slice(nl + 1).trim();
